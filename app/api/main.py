@@ -2,7 +2,8 @@ import os
 import secrets
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Security
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 
 from app.services.agent_service import (
@@ -21,11 +22,18 @@ app = FastAPI(
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 SAMPLE_WORKSPACE = (PROJECT_ROOT / "workspace" / "sample_calculator").resolve()
+
+# Adds the Authorize button to Swagger UI.
+api_key_header = APIKeyHeader(
+    name="X-API-Key",
+    auto_error=False,
+)
 
 
 def require_api_key(
-    x_api_key: str = Header(default="", alias="X-API-Key"),
+    x_api_key: str | None = Security(api_key_header),
 ) -> None:
     """Require a configured API key for AI endpoints."""
 
@@ -94,7 +102,7 @@ def home():
         "message": "Autonomous Software Engineering Agent API",
         "docs": "/docs",
         "health": "/health",
-        "authentication": "X-API-Key required for AI endpoints",
+        "authentication": ("X-API-Key required for AI endpoints"),
     }
 
 
@@ -103,7 +111,10 @@ def health_check():
     return {"status": "healthy"}
 
 
-@app.post("/agent/analyze", dependencies=[Depends(require_api_key)])
+@app.post(
+    "/agent/analyze",
+    dependencies=[Depends(require_api_key)],
+)
 def analyze(request: AnalyzeTaskRequest):
     workspace = validate_workspace(request.workspace)
 
@@ -119,7 +130,10 @@ def analyze(request: AnalyzeTaskRequest):
         ) from exc
 
 
-@app.post("/agent/preview", dependencies=[Depends(require_api_key)])
+@app.post(
+    "/agent/preview",
+    dependencies=[Depends(require_api_key)],
+)
 def preview(request: PreviewChangeRequest):
     workspace = validate_workspace(request.workspace)
 
@@ -132,10 +146,5 @@ def preview(request: PreviewChangeRequest):
     except (ValueError, FileNotFoundError) as exc:
         raise HTTPException(
             status_code=400,
-            detail=str(exc),
-        ) from exc
-    except RuntimeError as exc:
-        raise HTTPException(
-            status_code=502,
             detail=str(exc),
         ) from exc
